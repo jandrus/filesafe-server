@@ -5,6 +5,9 @@
 * Table of Contents :toc:
 - [[#quick-start][Quick Start]]
 - [[#about][About]]
+- [[#suggested-use][Suggested Use]]
+  - [[#suggested-network-diagram][Suggested network diagram]]
+  - [[#alternate-network-diagram][Alternate network diagram]]
 - [[#filesdirectories][Files/Directories]]
 - [[#function-description][Function Description]]
   - [[#lock][Lock]]
@@ -36,6 +39,17 @@
 
 * About
 Filesafe is designed to be a digital safe or vault for your data with an automatic locking feature (timeout) and automatic backup feature. Filesafe (your digital vault) can be locked and unlocked with a password from the client program. See [[Function Description]] for details on locking and locking process. Your vault is a directory, specified with /protected_dir/ in *filesafe.ini*. This directory can be a directory on a separate network share, local directory on the server shared with the network (recommended for multi-user), or local directory on the server that is not shared (recommended for single-user). With a properly setup filesafe-server, a client can securely authenticate (see [[Public-Key Encryption]]) to the server and lock/unlock the /protected_dir/.
+
+* Suggested Use
+Filesafe is best used when the server is hosting a share (nfs/smb) and the client is connected to the share and uses the client program ([[Client]]) to unlock/lock the filesafe as necessary ([[Suggested network diagram]]). Alternatively, a separate share host can be used ([[Alternate network diagram]]). This is not recommended due to increased network latency.
+** Suggested network diagram
+#+CAPTION: Suggested network
+#+ATTR_CENTER:
+[[./suggested-network.txt]]
+** Alternate network diagram
+#+CAPTION: Suggested network
+#+ATTR_CENTER:
+[[./alt-network.txt]]
 
 * Files/Directories
 Files used by *filesafe-server* are kept in "$HOME/.config/filesafe".
