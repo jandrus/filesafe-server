@@ -23,15 +23,15 @@
 * Quick Start
 1. (Optional) Setup nfs/smb share on host machine. This will greatly reduce network latency for file manipulation
 2. Build the program if necessary.
-   a. $ cd filesafe-server
-   b. $ cargo build     # This will create a binary file "filesafe-server" in "filesafe-server/target/debug/". Move file as necessary
+   * $ cd filesafe-server
+   * $ cargo build     # This will create a binary file "filesafe-server" in "filesafe-server/target/debug/". Move file as necessary
 3. Run the setup utility
-   a. $ ./setup.py
+   * $ ./setup.py
 4. Edit the configuration file if necessary
-   a. $ vi ~/.config/filesafe/filesafe.ini
+   * $ vi ~/.config/filesafe/filesafe.ini
 5. Run the server with the setup flag. If binary was moved, execute from that location.
-   a. $ cd target/debug
-   b. ./filesafe-server -s
+   * $ cd target/debug
+   * ./filesafe-server -s
 
 * About
 Filesafe is designed to be a digital safe or vault for your data with an automatic locking feature (timeout) and automatic backup feature. Filesafe (your digital vault) can be locked and unlocked with a password from the client program. See [[Function Description]] for details on locking and locking process. Your vault is a directory, specified with /protected_dir/ in *filesafe.ini*. This directory can be a directory on a separate network share, local directory on the server shared with the network (recommended for multi-user), or local directory on the server that is not shared (recommended for single-user). With a properly setup filesafe-server, a client can securely authenticate (see [[Public-Key Encryption]]) to the server and lock/unlock the /protected_dir/.
