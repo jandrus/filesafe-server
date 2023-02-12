@@ -1,0 +1,123 @@
+#+TITLE: Filesafe Server
+#+AUTHOR: James Andrus
+
+
+* Table of Contents :toc:
+- [[#quick-start][Quick Start]]
+- [[#about][About]]
+- [[#filesdirectories][Files/Directories]]
+- [[#function-description][Function Description]]
+  - [[#lock][Lock]]
+  - [[#unlock][Unlock]]
+  - [[#compression][Compression]]
+  - [[#encryption][Encryption]]
+  - [[#public-key-encryption][Public-Key Encryption]]
+  - [[#timeout][Timeout]]
+  - [[#backup][Backup]]
+  - [[#memory-encryption][Memory Encryption]]
+  - [[#secure-erase-shred--u][Secure Erase (shred -u)]]
+- [[#items-59][Items]]
+- [[#donate][Donate]]
+- [[#license][License]]
+
+* Quick Start
+1. Build the program if necessary.
+    $ cd filesafe-server; cargo build
+2. Run the setup utility
+    $ ./setup.py
+3. Edit the configuration file if necessary
+    $ vi ~/.config/filesafe/filesafe.ini
+4. Run the server with the setup flag.
+    $ cd target/debug; ./filesafe-server -s
+
+* About
+Filesafe is designed to be a digital safe or vault for your data with an automatic locking feature (timeout) and automatic backup feature. Filesafe (your digital vault) can be locked and unlocked with a password from the client program. See [[Function Description]] for details on locking and locking process. Your vault is a directory, specified as /protected_dir/ in *filesafe.ini*. This directory can be a directory on a separate network share, local directory on the server shared with the network (recommended for multi-user), or local directory on the server that is not shared (recommended for single-user). With a properly setup filesafe-server, a client can securely authenticate (see [[Public-Key Encryption]]) to the server and lock/unlock the /protected_dir/.
+
+* Files/Directories
+Files used by "filesafe-server" are kept in *"$HOME/.config/filesafe"*.
+*** .compressed/
+Directory where compressed files are stored. Files are stored here before encryption in the locking process and after decryption in the unlocking process. This directory is usually empty.
+*** backup/
+Directory where backups are saved. This directory is independent from /sec_backup_dir/ set via args or in /filesafe.ini/. Each backup is saved in a sub-directory /filesafe-{timestamp}/ with two files.
+**** filesafe.backup
+TAR of encrypted files that consist of the backup.
+**** filesafe.hash
+File containing hash of encrypted files. This hash is used to avoid backup duplication within the same backup directory. If a backup is taken and the hash matches an existing backup, then the previous backup is deleted and the new backup is saved.
+*** encrypted/
+Directory where encrypted files are stored. Multiple part files will be stored here depending on the threads available to your servers processor.
+*** .filesafe.shadow
+File containing hash of password and nonce (salt). Used for password verification.
+*** filesafe.ini
+Configuration file for server and client. See config file comments for description on variables.
+*** filesafe-server.log
+Log file for server.
+
+* Function Description
+** Lock
+To lock filesafe, files in /protected_dir/ are first compressed (see [[Compression]]). After files are compressed to an archive, files are split into part part files. The number of part files is deteremined by the number of threads available to the server. These part files are then encrypted (see [[Encryption]]) and placed in the /encrypted/ directory.
+** Unlock
+This is the reverse process of [[Lock]]. Files are decrypted, assembled into the archive, and decompressed.
+** Compression
+Compression is minimal. GZ encoding is used in fast mode. Testing indicates better performance by speeding up the compression process. However, this is heavily dependent on file types being compressed and network bandwidth if the *protected_dir* is on a separate network share.
+Implementation Used: crate flate2 -> GzEncoder
+** Encryption
+Files are encrypted with the Chacha20-Poly1305 cipher (AEAD) with PBKDF-SHA256:100000 iterations KDF. The crate *cocoon* is used as a wrapper for *chacha20poly1305*. This cipher and implementation was chosen for its strong encryption, adoption in TLS, and external security audit by NCC Group (https://research.nccgroup.com/2020/02/26/public-report-rustcrypto-aes-gcm-and-chacha20poly1305-implementation-review/).
+Implementation Used: crate cocoon
+** Public-Key Encryption
+Public-key encryption (RSA) is used for authentication from client to server. The only message encrypted is the password sent by the client. All other messages are status/request codes.
+Implementation Used: crate rsa
+** Timeout
+Timeout is a feature that will automatically lock the filesafe if no files have been modified in the directory (or sub-directories) within the specified time frame. This feature can be disabled via arguments (not recommended).
+** Backup
+The parameters *auto_backup_freq*, *auto_backup_time*, and *auto_backup_day* dictate when the server will perform automatic backups. Backups will also be taken if a new filesafe is being initialized and a locked filesafe exists.
+** Memory Encryption
+Passwords provided to the program when prompted are encrypted in memory and zeroized (overwritten with zeros) when memory is dropped. The password *CANNOT BE ENCRYPTED OR ZEROIZED* with the password passed as arguments. The /--pass/ argument is provided to allow for scripting with the intended use being testing *ONLY*. But, its your copy of the software and you do what you want.
+** Secure Erase (shred -u)
+Sensitive files and directories are "shredded" when they are not necessary. This is done during the [[Lock]], [[Unlock]], and /restore_files/ processes. When a file is shredded, the entire contents of the file is overwritten with pseudo-random bytes and then the memory addresses are freed (just like the linux tool /shred/ with the /u/ flag). See log file (*~/.config/filesafe/filesafe-server.log*) for where and when directories/files are shredded.
+The directories that are shredded include:
+ * protected_dir
+ * ~/.config/filesafe/.compressed
+ * ~/.config/filesafe/.tmp
+Implementation Used: crate nozomi
+
+* TODO Items [5/9]
++ [ ] Analyze memory for encrypted data leaks. [0/4]
+  - [ ] Timeout thread
+  - [ ] Client authentication (Server's SK)
+  - [ ] Normal at rest
+  - [ ] Inspect disk following secure erase ([[Secure Erase]])
++ [-] Implement shred like feature for [2/3]
+  - [ ] protected_dir
+  - [X] Compressed prior to encryption
+  - [X] Decompressed following decryption
++ [-] Documentation
++ [X] Make secure erase multithread
++ [X] Test on remote machine with nfs share from that remote server
++ [ ] Daemon to show if filesafe is open?
++ [X] Wrap (Encrypt) server private key in memory so it cannot be extracted
++ [X] Automatic Backups
++ [X] Create setup scripts [2/2]
+  - [X] Server
+  - [X] Client
+
+* Donate
+_XMR_: 84t9GUWQVJSGxF8cbMtRBd67YDAHnTsrdWVStcdpiwcAcAnVy21U6RmLdwiQdbfsyu16UqZn6qj1gGheTMkHkYA4HbVN4zS
+_BTC_: bc1q9fezeju0mgyzgcx0jlfdkvur5z6qhpuulnzyy7
+
+* License
+Filesafe - Secure file vault
+Copyright (C) 2023 James Andrus
+Email: jandrus@citadel.edu
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.

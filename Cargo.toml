@@ -1,0 +1,30 @@
+[package]
+name = "filesafe-server"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "filesafe"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0.68"
+base64 = "0.20.0"
+chrono = "0.4.23"
+clap = "4.0.32"
+cocoon = "0.3.2"
+flate2 = "1.0.25"
+fs_extra = "1.2.0"
+hex = "0.4.3"
+nozomi = "1.0.2"
+num_cpus = "1.15.0"
+pnet_datalink = "0.31.0"
+rand = "0.8.5"
+rpassword = "7.2.0"
+rsa = "0.7.2"
+rust-ini = "0.18.0"
+secstr = "0.5.1"
+sha2 = "0.10.6"
+tar = "0.4.38"
+threadpool = "1.8.1"
+zeroize = "1.5.7"
