@@ -43,13 +43,13 @@ Filesafe is designed to be a digital safe or vault for your data with an automat
 * Suggested Use
 Filesafe is best used when the server is hosting a share (nfs/smb) and the client is connected to the share and uses the client program ([[Client]]) to unlock/lock the filesafe as necessary ([[Suggested network diagram]]). Alternatively, a separate share host can be used ([[Alternate network diagram]]). This is not recommended due to increased network latency.
 ** Suggested network diagram
-#+CAPTION: Suggested network
+#+CAPTION: Suggested network layout
 #+ATTR_CENTER:
-[[./suggested-network.txt]]
+[[./diagrams/suggested-network.txt]]
 ** Alternate network diagram
-#+CAPTION: Suggested network
+#+CAPTION: Alternate network layout
 #+ATTR_CENTER:
-[[./alt-network.txt]]
+[[./diagrams/alt-network.txt]]
 
 * Files/Directories
 Files used by *filesafe-server* are kept in "$HOME/.config/filesafe".
