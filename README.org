@@ -16,25 +16,28 @@
   - [[#backup][Backup]]
   - [[#memory-encryption][Memory Encryption]]
   - [[#secure-erase-shred--u][Secure Erase (shred -u)]]
-- [[#items-59][Items]]
+- [[#project-tracking-59][Project Tracking]]
 - [[#donate][Donate]]
 - [[#license][License]]
 
 * Quick Start
-1. Build the program if necessary.
-    $ cd filesafe-server; cargo build
-2. Run the setup utility
-    $ ./setup.py
-3. Edit the configuration file if necessary
-    $ vi ~/.config/filesafe/filesafe.ini
-4. Run the server with the setup flag.
-    $ cd target/debug; ./filesafe-server -s
+1. (Optional) Setup nfs/smb share on host machine. This will greatly reduce network latency for file manipulation
+2. Build the program if necessary.
+   a. $ cd filesafe-server
+   b. $ cargo build     # This will create a binary file "filesafe-server" in "filesafe-server/target/debug/". Move file as necessary
+3. Run the setup utility
+   a. $ ./setup.py
+4. Edit the configuration file if necessary
+   a. $ vi ~/.config/filesafe/filesafe.ini
+5. Run the server with the setup flag. If binary was moved, execute from that location.
+   a. $ cd target/debug
+   b. ./filesafe-server -s
 
 * About
-Filesafe is designed to be a digital safe or vault for your data with an automatic locking feature (timeout) and automatic backup feature. Filesafe (your digital vault) can be locked and unlocked with a password from the client program. See [[Function Description]] for details on locking and locking process. Your vault is a directory, specified as /protected_dir/ in *filesafe.ini*. This directory can be a directory on a separate network share, local directory on the server shared with the network (recommended for multi-user), or local directory on the server that is not shared (recommended for single-user). With a properly setup filesafe-server, a client can securely authenticate (see [[Public-Key Encryption]]) to the server and lock/unlock the /protected_dir/.
+Filesafe is designed to be a digital safe or vault for your data with an automatic locking feature (timeout) and automatic backup feature. Filesafe (your digital vault) can be locked and unlocked with a password from the client program. See [[Function Description]] for details on locking and locking process. Your vault is a directory, specified with /protected_dir/ in *filesafe.ini*. This directory can be a directory on a separate network share, local directory on the server shared with the network (recommended for multi-user), or local directory on the server that is not shared (recommended for single-user). With a properly setup filesafe-server, a client can securely authenticate (see [[Public-Key Encryption]]) to the server and lock/unlock the /protected_dir/.
 
 * Files/Directories
-Files used by "filesafe-server" are kept in *"$HOME/.config/filesafe"*.
+Files used by *filesafe-server* are kept in "$HOME/.config/filesafe".
 *** .compressed/
 Directory where compressed files are stored. Files are stored here before encryption in the locking process and after decryption in the unlocking process. This directory is usually empty.
 *** backup/
@@ -80,7 +83,7 @@ The directories that are shredded include:
  * ~/.config/filesafe/.tmp
 Implementation Used: crate nozomi
 
-* TODO Items [5/9]
+* TODO Project Tracking [5/9]
 + [ ] Analyze memory for encrypted data leaks. [0/4]
   - [ ] Timeout thread
   - [ ] Client authentication (Server's SK)
@@ -101,8 +104,8 @@ Implementation Used: crate nozomi
   - [X] Client
 
 * Donate
-_XMR_: 84t9GUWQVJSGxF8cbMtRBd67YDAHnTsrdWVStcdpiwcAcAnVy21U6RmLdwiQdbfsyu16UqZn6qj1gGheTMkHkYA4HbVN4zS
-_BTC_: bc1q9fezeju0mgyzgcx0jlfdkvur5z6qhpuulnzyy7
+- XMR: 84t9GUWQVJSGxF8cbMtRBd67YDAHnTsrdWVStcdpiwcAcAnVy21U6RmLdwiQdbfsyu16UqZn6qj1gGheTMkHkYA4HbVN4zS
+- BTC: bc1q9fezeju0mgyzgcx0jlfdkvur5z6qhpuulnzyy7
 
 * License
 Filesafe - Secure file vault
