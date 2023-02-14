@@ -226,7 +226,7 @@ fn backup_prompt(
         let backup = filesafe::create_backup(secondary_backup)?;
         let event = format!("Backup {} created", backup);
         filesafe::log_event(&event, filesafe::LogLevel::Info);
-        fs::remove_dir(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+        fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
         fs::create_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
         fs::remove_file(filesafe::FILESAFE_SHADOW)?;
         restore_backup(&restore_dir)?;

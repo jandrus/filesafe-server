@@ -17,7 +17,7 @@
 
 use anyhow::{anyhow, bail, ensure, Result};
 use chrono::{Local, NaiveDateTime};
-use fs_extra::dir::{self, get_dir_content, get_dir_content2, CopyOptions, DirOptions};
+use fs_extra::dir::{self, get_dir_content2, CopyOptions, DirOptions};
 use sha2::{Digest, Sha256};
 use std::fs::{self, create_dir_all, File, OpenOptions};
 use std::io::{Read, Write};
