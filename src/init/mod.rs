@@ -215,20 +215,18 @@ fn backup_prompt(
             lock_if_unlocked(0, protected_dir)?;
         }
         let is_locked = filesafe::is_locked()?;
-        ensure!(
-            is_locked,
-            "Attempted to create backup of non-locked filesafe."
-        );
-        filesafe::log_event(
-            "Creating backup of current filesafe",
-            filesafe::LogLevel::Info,
-        );
-        let backup = filesafe::create_backup(secondary_backup)?;
-        let event = format!("Backup {} created", backup);
-        filesafe::log_event(&event, filesafe::LogLevel::Info);
-        fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
-        fs::create_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
-        fs::remove_file(filesafe::FILESAFE_SHADOW)?;
+        if is_locked {
+            filesafe::log_event(
+                "Creating backup of current filesafe",
+                filesafe::LogLevel::Info,
+            );
+            let backup = filesafe::create_backup(secondary_backup)?;
+            let event = format!("Backup {} created", backup);
+            filesafe::log_event(&event, filesafe::LogLevel::Info);
+            fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+            fs::create_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+            fs::remove_file(filesafe::FILESAFE_SHADOW)?;
+        }
         restore_backup(&restore_dir)?;
         return Ok(true);
     }
@@ -241,6 +239,13 @@ fn backup_prompt(
 }
 
 fn restore_backup(dir: &str) -> Result<()> {
+    if Path::new(filesafe::FILESAFE_ENCRYPTED_DIR).exists() {
+        fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+        fs::create_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+    }
+    if Path::new(filesafe::FILESAFE_SHADOW).exists() {
+        fs::remove_file(filesafe::FILESAFE_SHADOW)?;
+    }
     let backup_tar_file = File::open(format!("{}/filesafe.backup", dir))?;
     let mut archive = Archive::new(backup_tar_file);
     archive.unpack(".")?;

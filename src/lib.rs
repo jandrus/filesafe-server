@@ -144,25 +144,13 @@ pub fn create_backup(secondary_backup: &Option<String>) -> Result<String> {
     let hash_file_name = format!("{}/filesafe.hash", backup_dir);
     let mut hash_file = File::create(&hash_file_name)?;
     let mut tar_file = tar::Builder::new(backup_tar);
-    // let options = DirOptions::new();
-    // let filesafe_files = get_dir_content2(FILESAFE_ENCRYPTED_DIR, &options)?.files;
-    // let mut filesafe_files: Vec<String> = Vec::new();
     for entry in fs::read_dir(FILESAFE_ENCRYPTED_DIR)? {
         let file = entry?.path().into_os_string().into_string().unwrap();
-        // filesafe_files.append(&mut vec![entry]);
         if file.contains(FILESAFE_ENC) {
             let mut f = File::open(&file)?;
             tar_file.append_file(&file, &mut f)?;
-            // fs::remove_file(file)?;
         }
     }
-    // for file in filesafe_files {
-    //     if file.contains(FILESAFE_ENC) {
-    //         let mut f = File::open(&file)?;
-    //         tar_file.append_file(&file, &mut f)?;
-    //         // fs::remove_file(file)?;
-    //     }
-    // }
     let hash = get_file_hash(&backup_tar_name)?;
     let mut f = File::open(FILESAFE_SHADOW)?;
     tar_file.append_file(FILESAFE_SHADOW, &mut f)?;
@@ -245,6 +233,18 @@ pub fn shred_dir(directory: &str) -> Result<()> {
     };
     let event = format!("End shred of {} directory", directory);
     log_event(&event, LogLevel::Performance);
+    Ok(())
+}
+
+pub fn remove_child_paths(directory: &str) -> Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        if entry.metadata()?.is_dir() {
+            fs::remove_dir_all(entry.path().into_os_string().into_string().unwrap())?;
+        } else {
+            fs::remove_file(entry.path().into_os_string().into_string().unwrap())?;
+        }
+    }
     Ok(())
 }
 

@@ -83,8 +83,7 @@ pub fn lock(password: &str, protected_dir: &str) -> Result<()> {
     ensure!(is_valid, "Lock attempt with INVALID password");
     compress(protected_dir)?;
     // filesafe::shred_dir(protected_dir)?;
-    fs::remove_dir_all(protected_dir)?;
-    fs::create_dir(protected_dir)?;
+    filesafe::remove_child_paths(protected_dir)?;
     split_file()?;
     // filesafe::log_event("Begin shred of TAR file", filesafe::LogLevel::Performance);
     // match nozomi::erase_file(filesafe::FILESAFE_TAR, nozomi::EraserEntity::PseudoRandom) {
