@@ -27,7 +27,7 @@ use cocoon::Cocoon;
 use flate2::read::GzEncoder;
 use flate2::write::GzDecoder;
 use flate2::Compression;
-use fs_extra::dir::{self, get_dir_content2, DirOptions};
+use fs_extra::dir::{self, get_dir_content};
 use rand::Rng;
 use rsa::pkcs1::{DecodeRsaPrivateKey, EncodeRsaPrivateKey, EncodeRsaPublicKey};
 use rsa::{PaddingScheme, RsaPrivateKey, RsaPublicKey};
@@ -82,19 +82,22 @@ pub fn lock(password: &str, protected_dir: &str) -> Result<()> {
     let is_valid = verify_password(password)?;
     ensure!(is_valid, "Lock attempt with INVALID password");
     compress(protected_dir)?;
-    filesafe::shred_dir(protected_dir)?;
+    // filesafe::shred_dir(protected_dir)?;
+    fs::remove_dir_all(protected_dir)?;
     fs::create_dir(protected_dir)?;
     split_file()?;
-    filesafe::log_event("Begin shred of TAR file", filesafe::LogLevel::Performance);
-    match nozomi::erase_file(filesafe::FILESAFE_TAR, nozomi::EraserEntity::PseudoRandom) {
-        Ok(_) => (),
-        Err(e) => {
-            bail!("{}", e);
-        }
-    };
-    filesafe::log_event("End shred of TAR file", filesafe::LogLevel::Performance);
+    // filesafe::log_event("Begin shred of TAR file", filesafe::LogLevel::Performance);
+    // match nozomi::erase_file(filesafe::FILESAFE_TAR, nozomi::EraserEntity::PseudoRandom) {
+    //     Ok(_) => (),
+    //     Err(e) => {
+    //         bail!("{}", e);
+    //     }
+    // };
+    // filesafe::log_event("End shred of TAR file", filesafe::LogLevel::Performance);
+    fs::remove_file(filesafe::FILESAFE_TAR)?;
     encrypt_files(password)?;
-    filesafe::shred_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    // filesafe::shred_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    fs::remove_dir_all(filesafe::FILESAFE_COMPRESSED_DIR)?;
     fs::create_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
     filesafe::log_event("Filesafe LOCKED", filesafe::LogLevel::Info);
     Ok(())
@@ -107,7 +110,8 @@ pub fn unlock(password: &str) -> Result<()> {
     decrypt_files(password)?;
     assemble_files()?;
     decompress()?;
-    filesafe::shred_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    // filesafe::shred_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    fs::remove_dir_all(filesafe::FILESAFE_COMPRESSED_DIR)?;
     fs::create_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
     fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
     fs::create_dir(filesafe::FILESAFE_ENCRYPTED_DIR)?;
@@ -228,8 +232,8 @@ fn encrypt_files(password: &str) -> Result<()> {
     filesafe::log_event("Encryption initiated", filesafe::LogLevel::Performance);
     let pool = ThreadPool::new(num_cpus::get());
     let (tx, rx): (Sender<Result<()>>, Receiver<Result<()>>) = channel();
-    let options = DirOptions::new();
-    let compressed_files = get_dir_content2(filesafe::FILESAFE_COMPRESSED_DIR, &options)?.files;
+    // let options = DirOptions::new();
+    let compressed_files = get_dir_content(filesafe::FILESAFE_COMPRESSED_DIR)?.files;
     for file in compressed_files {
         if !file.contains(filesafe::FILESAFE_TAR) {
             continue;
@@ -262,8 +266,8 @@ fn decrypt_files(password: &str) -> Result<()> {
     filesafe::log_event("Decryption initiated", filesafe::LogLevel::Performance);
     let pool = ThreadPool::new(num_cpus::get());
     let (tx, rx): (Sender<Result<()>>, Receiver<Result<()>>) = channel();
-    let options = DirOptions::new();
-    let encrypted_files = get_dir_content2(filesafe::FILESAFE_ENCRYPTED_DIR, &options)?.files;
+    // let options = DirOptions::new();
+    let encrypted_files = get_dir_content(filesafe::FILESAFE_ENCRYPTED_DIR)?.files;
     for file in encrypted_files {
         if !file.contains(filesafe::FILESAFE_ENC) {
             continue;
@@ -336,8 +340,8 @@ fn split_file() -> Result<()> {
 }
 
 fn assemble_files() -> Result<()> {
-    let options = DirOptions::new();
-    let mut compressed_files = get_dir_content2(filesafe::FILESAFE_COMPRESSED_DIR, &options)?.files;
+    // let options = DirOptions::new();
+    let mut compressed_files = get_dir_content(filesafe::FILESAFE_COMPRESSED_DIR)?.files;
     let mut file_bytes = Vec::new();
     compressed_files.sort();
     for file in compressed_files {

@@ -19,7 +19,7 @@
   - [[#backup][Backup]]
   - [[#memory-encryption][Memory Encryption]]
   - [[#secure-erase-shred--u][Secure Erase (shred -u)]]
-- [[#project-tracking-69][Project Tracking]]
+- [[#project-tracking-410][Project Tracking]]
 - [[#donate][Donate]]
 - [[#client][Client]]
 - [[#license][License]]
@@ -91,25 +91,23 @@ The parameters *auto_backup_freq*, *auto_backup_time*, and *auto_backup_day* dic
 ** Memory Encryption
 Passwords provided to the program when prompted are encrypted in memory and zeroized (overwritten with zeros) when memory is dropped. The password *CANNOT BE ENCRYPTED OR ZEROIZED* with the password passed as arguments. The /--pass/ argument is provided to allow for scripting with the intended use being testing *ONLY*. But, its your copy of the software and you do what you want.
 ** Secure Erase (shred -u)
-Sensitive files and directories are "shredded" when they are not necessary. This is done during the [[Lock]], [[Unlock]], and /restore_files/ processes. When a file is shredded, the entire contents of the file is overwritten with pseudo-random bytes and then the memory addresses are freed (just like the linux tool /shred/ with the /u/ flag). See log file (*~/.config/filesafe/filesafe-server.log*) for where and when directories/files are shredded.
+Sensitive files and directories are "shredded" when they are not necessary. This is done during the [[Lock]], [[Unlock]], and /restore_files/ processes. When a file is shredded, the entire contents of the file is overwritten with pseudo-random bytes and then the memory addresses are freed (just like the linux tool /shred/ with the /u/ flag). See log file (*~/.config/filesafe/filesafe-server.log*) for where and when directories/files are shredded. IMPLEMENTATION BROKEN due to update!
 The directories that are shredded include:
  * protected_dir
  * ~/.config/filesafe/.compressed
  * ~/.config/filesafe/.tmp
 Implementation Used: crate nozomi
 
-* TODO Project Tracking [6/9]
+* TODO Project Tracking [4/10]
 + [ ] Analyze memory for encrypted data leaks. [0/4]
   - [ ] Timeout thread
   - [ ] Client authentication (Server's SK)
   - [ ] Normal at rest
   - [ ] Inspect disk following secure erase ([[Secure Erase]])
-+ [X] Implement shred like feature for [3/3]
-  - [X] protected_dir
-  - [X] Compressed prior to encryption
-  - [X] Decompressed following decryption
++ [-] Implement shred like feature for
++ [-] Remove and restore symlinks
 + [-] Documentation
-+ [X] Make secure erase multithread
++ [-] Make secure erase multithread
 + [X] Test on remote machine with nfs share from that remote server
 + [ ] Daemon to show if filesafe is open?
 + [X] Wrap (Encrypt) server private key in memory so it cannot be extracted

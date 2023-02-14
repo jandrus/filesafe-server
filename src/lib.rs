@@ -17,7 +17,7 @@
 
 use anyhow::{anyhow, bail, ensure, Result};
 use chrono::{Local, NaiveDateTime};
-use fs_extra::dir::{self, get_dir_content2, CopyOptions, DirOptions};
+use fs_extra::dir::{self, get_dir_content, get_dir_content2, CopyOptions, DirOptions};
 use sha2::{Digest, Sha256};
 use std::fs::{self, create_dir_all, File, OpenOptions};
 use std::io::{Read, Write};
@@ -84,21 +84,19 @@ pub fn is_unlocked(protected_dir: &str) -> Result<bool> {
     if is_locked {
         return Ok(false);
     }
-    let options = DirOptions::new();
-    let files = dir::get_dir_content2(protected_dir, &options)?.files;
-    Ok(files.len() > 0 && Path::new(FILESAFE_SHADOW).exists())
+    let mut count = 0;
+    for _entry in fs::read_dir(protected_dir)? {
+        count += 1;
+    }
+    Ok(count > 0 && Path::new(FILESAFE_SHADOW).exists())
 }
 
 pub fn is_locked() -> Result<bool> {
-    let options = DirOptions::new();
-    let files = dir::get_dir_content2(FILESAFE_ENCRYPTED_DIR, &options)?.files;
-    let mut num_files = 0;
-    for file in files {
-        if file.contains(FILESAFE_ENC) {
-            num_files += 1;
-        }
+    let mut count = 0;
+    for _entry in fs::read_dir(FILESAFE_ENCRYPTED_DIR)? {
+        count += 1;
     }
-    Ok(num_files > 0 && Path::new(FILESAFE_SHADOW).exists())
+    Ok(count > 0 && Path::new(FILESAFE_SHADOW).exists())
 }
 
 pub fn log_event(e: &str, level: LogLevel) {
@@ -146,15 +144,25 @@ pub fn create_backup(secondary_backup: &Option<String>) -> Result<String> {
     let hash_file_name = format!("{}/filesafe.hash", backup_dir);
     let mut hash_file = File::create(&hash_file_name)?;
     let mut tar_file = tar::Builder::new(backup_tar);
-    let options = DirOptions::new();
-    let filesafe_files = get_dir_content2(FILESAFE_ENCRYPTED_DIR, &options)?.files;
-    for file in filesafe_files {
+    // let options = DirOptions::new();
+    // let filesafe_files = get_dir_content2(FILESAFE_ENCRYPTED_DIR, &options)?.files;
+    // let mut filesafe_files: Vec<String> = Vec::new();
+    for entry in fs::read_dir(FILESAFE_ENCRYPTED_DIR)? {
+        let file = entry?.path().into_os_string().into_string().unwrap();
+        // filesafe_files.append(&mut vec![entry]);
         if file.contains(FILESAFE_ENC) {
             let mut f = File::open(&file)?;
             tar_file.append_file(&file, &mut f)?;
             // fs::remove_file(file)?;
         }
     }
+    // for file in filesafe_files {
+    //     if file.contains(FILESAFE_ENC) {
+    //         let mut f = File::open(&file)?;
+    //         tar_file.append_file(&file, &mut f)?;
+    //         // fs::remove_file(file)?;
+    //     }
+    // }
     let hash = get_file_hash(&backup_tar_name)?;
     let mut f = File::open(FILESAFE_SHADOW)?;
     tar_file.append_file(FILESAFE_SHADOW, &mut f)?;
@@ -182,7 +190,7 @@ pub fn restore_files(protected_dir: &str) -> Result<()> {
     options.copy_inside = true;
     let mut dir_options = DirOptions::new();
     dir_options.depth = 1;
-    let dir_content = dir::get_dir_content2(FILESAFE_DECOMPRESS_TEMP, &dir_options)?;
+    let dir_content = get_dir_content2(FILESAFE_DECOMPRESS_TEMP, &dir_options)?;
     let mut from_paths = Vec::new();
     for dir in dir_content.directories {
         if dir == FILESAFE_DECOMPRESS_TEMP {
@@ -194,7 +202,8 @@ pub fn restore_files(protected_dir: &str) -> Result<()> {
         from_paths.push(f);
     }
     fs_extra::move_items(&from_paths, protected_dir, &options)?;
-    shred_dir(FILESAFE_DECOMPRESS_TEMP)?;
+    // shred_dir(FILESAFE_DECOMPRESS_TEMP)?;
+    fs::remove_dir_all(FILESAFE_DECOMPRESS_TEMP)?;
     log_event("Files restored", LogLevel::Info);
     Ok(())
 }
@@ -206,13 +215,17 @@ pub fn shred_dir(directory: &str) -> Result<()> {
     let (tx, rx): (Sender<Result<()>>, Receiver<Result<()>>) = channel();
     let all_files = get_all_files(directory)?;
     for file in all_files {
+        if !Path::new(&file).exists() {
+            continue;
+        }
+        // println!("{}", file);
         let tx = tx.clone();
         pool.execute(move || {
             let res = match nozomi::erase_file(&file, nozomi::EraserEntity::PseudoRandom) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(anyhow!("Error erasing file {} [{}]", file, e)),
             };
-            tx.send(res).expect("Unable to send to tx");
+            tx.send(res).expect("Unable to send to tx {file}");
         });
     }
     drop(tx);
@@ -222,6 +235,8 @@ pub fn shred_dir(directory: &str) -> Result<()> {
             Err(e) => return Err(e),
         };
     }
+    let event = format!("Complete shred of FILES in {} directory", directory);
+    log_event(&event, LogLevel::Debug);
     match nozomi::erase_folder(directory, nozomi::EraserEntity::PseudoRandom, true) {
         Ok(_) => (),
         Err(e) => {

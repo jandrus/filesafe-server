@@ -543,7 +543,10 @@ fn unlock_with_stream(
     {
         let mut action = match in_action.lock() {
             Ok(b) => b,
-            Err(e) => bail!("{}", e),
+            Err(e) => {
+                send_msg(STATUS_SERVER_ERR, stream)?;
+                bail!("{}", e);
+            }
         };
         if *action {
             let event = format!(
@@ -562,24 +565,31 @@ fn unlock_with_stream(
         stream.peer_addr().unwrap(),
     );
     filesafe::log_event(&event, filesafe::LogLevel::Info);
-    send_msg(STATUS_OK, stream)?;
     match crypto::unlock(&password) {
         Ok(_) => match filesafe::restore_files(&protected_dir) {
             Ok(_) => {
                 let mut action = match in_action.lock() {
                     Ok(b) => b,
-                    Err(e) => bail!("{}", e),
+                    Err(e) => {
+                        send_msg(STATUS_SERVER_ERR, stream)?;
+                        bail!("{}", e);
+                    }
                 };
                 *action = false;
+                send_msg(STATUS_OK, stream)?;
             }
             Err(e) => {
                 {
                     let mut action = match in_action.lock() {
                         Ok(b) => b,
-                        Err(e) => bail!("{}", e),
+                        Err(e) => {
+                            send_msg(STATUS_SERVER_ERR, stream)?;
+                            bail!("{}", e);
+                        }
                     };
                     *action = false;
                 }
+                send_msg(STATUS_SERVER_ERR, stream)?;
                 bail!("{}", e);
             }
         },
@@ -587,10 +597,14 @@ fn unlock_with_stream(
             {
                 let mut action = match in_action.lock() {
                     Ok(b) => b,
-                    Err(e) => bail!("{}", e),
+                    Err(e) => {
+                        send_msg(STATUS_SERVER_ERR, stream)?;
+                        bail!("{}", e);
+                    }
                 };
                 *action = false;
             }
+            send_msg(STATUS_SERVER_ERR, stream)?;
             bail!("{}", e);
         }
     }
@@ -603,12 +617,17 @@ fn lock_with_stream(
     stream: &TcpStream,
     in_action: Arc<Mutex<bool>>,
 ) -> Result<()> {
+    let event = format!("Begin lock from {} ", stream.peer_addr().unwrap());
+    filesafe::log_event(&event, filesafe::LogLevel::Debug);
     let is_valid_pass = crypto::verify_password(&password)?;
     ensure!(is_valid_pass, "Invalid password received");
     {
         let mut action = match in_action.lock() {
             Ok(b) => b,
-            Err(e) => bail!("{}", e),
+            Err(e) => {
+                send_msg(STATUS_SERVER_ERR, stream)?;
+                bail!("{}", e);
+            }
         };
         if *action {
             let event = format!(
@@ -617,6 +636,8 @@ fn lock_with_stream(
             );
             filesafe::log_event(&event, filesafe::LogLevel::Info);
             send_msg(STATUS_IN_ACTION, &stream)?;
+            let event = format!("End lock from {} BUSY", stream.peer_addr().unwrap());
+            filesafe::log_event(&event, filesafe::LogLevel::Debug);
             return Ok(());
         } else {
             *action = true;
@@ -627,26 +648,35 @@ fn lock_with_stream(
         stream.peer_addr().unwrap(),
     );
     filesafe::log_event(&event, filesafe::LogLevel::Info);
-    send_msg(STATUS_OK, stream)?;
     match crypto::lock(&password, protected_dir) {
         Ok(_) => {
             let mut action = match in_action.lock() {
                 Ok(b) => b,
-                Err(e) => bail!("{}", e),
+                Err(e) => {
+                    send_msg(STATUS_SERVER_ERR, stream)?;
+                    bail!("{}", e);
+                }
             };
             *action = false;
+            send_msg(STATUS_OK, stream)?;
         }
         Err(e) => {
             {
                 let mut action = match in_action.lock() {
                     Ok(b) => b,
-                    Err(e) => bail!("{}", e),
+                    Err(e) => {
+                        send_msg(STATUS_SERVER_ERR, stream)?;
+                        bail!("{}", e);
+                    }
                 };
                 *action = false;
             }
+            send_msg(STATUS_SERVER_ERR, stream)?;
             bail!("{}", e);
         }
     }
+    let event = format!("End lock from {} ", stream.peer_addr().unwrap());
+    filesafe::log_event(&event, filesafe::LogLevel::Debug);
     Ok(())
 }
 
@@ -846,7 +876,7 @@ fn watch(
                     Err(e) => {
                         let err_str = format!("[Error] watch::lock {}", e);
                         filesafe::log_event(&err_str, filesafe::LogLevel::Error);
-                        continue;
+                        return;
                     }
                 };
             }
@@ -996,6 +1026,9 @@ fn get_directory_modified(dir: &str) -> Result<u64> {
     for entry in directory {
         let entry = entry?;
         let path = entry.path();
+        if path.is_symlink() {
+            continue;
+        }
         let metadata = fs::metadata(&path)?;
         if metadata.is_dir() {
             let dir = match path.to_str() {
