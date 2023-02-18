@@ -129,6 +129,13 @@ def setup_conf_file():
     conf.set("SERVER", "sec_backup_dir", get_secondary_backup_dir())
     print("Secondary Backup Directory [OK]")
     time.sleep(1.5)
+    conf.set("SERVER", "# Allows filesafe to shred files (shred -u file) when locking. This will cut performance significantly, but will ensure files are properly deleted and unrecoverable with forensics.")
+    conf.set("SERVER", "# Not necessary if disk encryption is used.")
+    conf.set("SERVER", "# \'shred\' command must be installed on server (included in most linux kernels)!!!")
+    conf.set("SERVER", "# Valid values are \'y\' or \'n\'")
+    conf.set("SERVER", "shred", get_shred())
+    print("Shred [OK]")
+    time.sleep(1.5)
     if prev_conf:
         conf.add_section("CLIENT")
         conf["CLIENT"] = prev_conf
@@ -136,6 +143,26 @@ def setup_conf_file():
         conf.write(fp)
     print(f"Config file saved to \'{FILESAFE_DIR}filesafe.ini\'")
     time.sleep(2)
+
+def get_shred():
+    """ Get shred """
+    try:
+        print_banner("shred")
+        print("Shredding files overwrites files with random data upon deletion so that they cannot be recovered by forensics.")
+        print("Allowing this feature significantly reduces lock/unlock time and is unnecessary if server is running on an encrypted disk.")
+        print("This feature \'shreds\' (shred -u file) for files placed in the \'protected_dir\' and temporary compressed files when locking.")
+        print("This feature is recommended, but can be turned off for performance.")
+        ans = input("Allow shred [y/n]: ").lower()[0]
+        if ans in ("y", "n"):
+            print(ans)
+            return ans
+        print("Invalid answer.")
+        time.sleep(1.5)
+        return get_shred()
+    except ValueError:
+        print("Invalid answer.")
+        time.sleep(1.5)
+        return get_shred()
 
 def get_backup_day():
     """ Get backup day """

@@ -57,8 +57,12 @@ pub fn setup_server_params(matches: ArgMatches) -> Result<filesafe::ServerParams
     get_server_params(matches.clone(), current_dir, safe_dir)
 }
 
-pub fn setup_interractive(protected_dir: &str, secondary_backup: &Option<String>) -> Result<()> {
-    lock_or_unlock_dialog(protected_dir)?;
+pub fn setup_interractive(
+    protected_dir: &str,
+    secondary_backup: &Option<String>,
+    shred_files: bool,
+) -> Result<()> {
+    lock_or_unlock_dialog(protected_dir, shred_files)?;
     let is_locked = filesafe::is_locked()?;
     let is_unlocked = filesafe::is_unlocked(protected_dir)?;
     if is_locked || is_unlocked {
@@ -66,24 +70,25 @@ pub fn setup_interractive(protected_dir: &str, secondary_backup: &Option<String>
     } else {
         filesafe::log_event("No prior filesafe detected", filesafe::LogLevel::Info);
     }
-    let did_restore = backup_prompt(0, protected_dir, secondary_backup)?;
+    let did_restore = backup_prompt(0, protected_dir, secondary_backup, shred_files)?;
     if did_restore {
-        // fs::remove_dir(filesafe::FILESAFE_ENCRYPTED_DIR)?;
-        // fs::create_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
-        // fs::remove_file(filesafe::FILESAFE_SHADOW)?;
-        lock_or_unlock_dialog(protected_dir)?;
+        lock_or_unlock_dialog(protected_dir, shred_files)?;
     }
     let is_locked = filesafe::is_locked()?;
     let is_unlocked = filesafe::is_unlocked(protected_dir)?;
     if is_locked || is_unlocked {
-        filesafe_setup(protected_dir, secondary_backup)?;
+        filesafe_setup(protected_dir, secondary_backup, shred_files)?;
     } else {
         initial_filesafe_setup()?;
     }
     Ok(())
 }
 
-pub fn setup_non_interractive(protected_dir: &str, matches: ArgMatches) -> Result<()> {
+pub fn setup_non_interractive(
+    protected_dir: &str,
+    matches: ArgMatches,
+    shred_files: bool,
+) -> Result<()> {
     let is_locked = filesafe::is_locked()?;
     let is_unlocked = filesafe::is_unlocked(protected_dir)?;
     if is_locked {
@@ -99,10 +104,10 @@ pub fn setup_non_interractive(protected_dir: &str, matches: ArgMatches) -> Resul
             match matches.value_source("pass") {
                 Some(_) => {
                     let password = matches.get_one::<String>("pass").unwrap().to_string();
-                    lock_with_pass(protected_dir, password)?;
+                    lock_with_pass(protected_dir, password, shred_files)?;
                 }
                 None => {
-                    lock_if_unlocked(0, protected_dir)?;
+                    lock_if_unlocked(0, protected_dir, shred_files)?;
                 }
             };
         }
@@ -112,12 +117,12 @@ pub fn setup_non_interractive(protected_dir: &str, matches: ArgMatches) -> Resul
             match matches.value_source("pass") {
                 Some(_) => {
                     let password = matches.get_one::<String>("pass").unwrap().to_string();
-                    unlock_with_pass(password)?;
-                    filesafe::restore_files(protected_dir)?;
+                    unlock_with_pass(password, shred_files)?;
+                    filesafe::restore_files(protected_dir, shred_files)?;
                 }
                 None => {
-                    unlock_if_locked(0)?;
-                    filesafe::restore_files(protected_dir)?;
+                    unlock_if_locked(0, shred_files)?;
+                    filesafe::restore_files(protected_dir, shred_files)?;
                 }
             };
         }
@@ -125,12 +130,12 @@ pub fn setup_non_interractive(protected_dir: &str, matches: ArgMatches) -> Resul
     Ok(())
 }
 
-fn unlock_with_pass(mut password: String) -> Result<()> {
+fn unlock_with_pass(mut password: String, shred_files: bool) -> Result<()> {
     let is_valid_pass = crypto::verify_password(&password)?;
     ensure!(is_valid_pass, "Invalid password");
     filesafe::log_event("Valid password received", filesafe::LogLevel::Info);
     filesafe::log_event("Unlocking filesafe", filesafe::LogLevel::Info);
-    match crypto::unlock(&password) {
+    match crypto::unlock(&password, shred_files) {
         Ok(_) => {
             password.zeroize();
             return Ok(());
@@ -142,12 +147,12 @@ fn unlock_with_pass(mut password: String) -> Result<()> {
     }
 }
 
-fn lock_with_pass(protected_dir: &str, mut password: String) -> Result<()> {
+fn lock_with_pass(protected_dir: &str, mut password: String, shred_files: bool) -> Result<()> {
     let is_valid_pass = crypto::verify_password(&password)?;
     ensure!(is_valid_pass, "Invalid password");
     filesafe::log_event("Valid password received", filesafe::LogLevel::Info);
     filesafe::log_event("Locking filesafe", filesafe::LogLevel::Info);
-    match crypto::lock(&password, protected_dir) {
+    match crypto::lock(&password, protected_dir, shred_files) {
         Ok(_) => {
             password.zeroize();
             return Ok(());
@@ -193,6 +198,7 @@ fn backup_prompt(
     mut num_tries: usize,
     protected_dir: &str,
     secondary_backup: &Option<String>,
+    shred_files: bool,
 ) -> Result<bool> {
     ensure!(
         num_tries < filesafe::MAX_PASS_ATTEMPT,
@@ -212,7 +218,7 @@ fn backup_prompt(
         let restore_dir = get_restore_dir(0, prev_backups)?.to_string();
         if is_unlocked {
             println!("Filesafe is currently unlocked. Restoring backup with unlocked filesafe may corrupt unlocked files.\nEnter password to lock current filesafe and restore backup.");
-            lock_if_unlocked(0, protected_dir)?;
+            lock_if_unlocked(0, protected_dir, shred_files)?;
         }
         let is_locked = filesafe::is_locked()?;
         if is_locked {
@@ -235,7 +241,7 @@ fn backup_prompt(
     }
     println!("Invalid input");
     num_tries += 1;
-    backup_prompt(num_tries, protected_dir, secondary_backup)
+    backup_prompt(num_tries, protected_dir, secondary_backup, shred_files)
 }
 
 fn restore_backup(dir: &str) -> Result<()> {
@@ -348,45 +354,45 @@ fn get_prev_backups(secondary_backup: &Option<String>) -> Result<Vec<String>> {
     Ok(dirs)
 }
 
-fn lock_or_unlock_dialog(protected_dir: &str) -> Result<()> {
+fn lock_or_unlock_dialog(protected_dir: &str, shred_files: bool) -> Result<()> {
     let is_unlocked = filesafe::is_unlocked(protected_dir)?;
     let is_locked = filesafe::is_locked()?;
     if is_unlocked {
-        prompt_lock_if_unlocked(protected_dir)?;
+        prompt_lock_if_unlocked(protected_dir, shred_files)?;
         return Ok(());
     }
     if is_locked {
-        prompt_unlock_if_locked(protected_dir)?;
+        prompt_unlock_if_locked(protected_dir, shred_files)?;
     }
     Ok(())
 }
 
-fn prompt_lock_if_unlocked(protected_dir: &str) -> Result<()> {
+fn prompt_lock_if_unlocked(protected_dir: &str, shred_files: bool) -> Result<()> {
     let mut ans = String::new();
     print!("Filesafe is unlocked. Would you like to lock it now? [Y/n]: ");
     let _ = io::stdout().flush();
     let _byt = io::stdin().read_line(&mut ans)?;
     let processed_ans = &ans.to_lowercase().trim().to_string();
     if processed_ans == "y" {
-        lock_if_unlocked(0, protected_dir)?;
+        lock_if_unlocked(0, protected_dir, shred_files)?;
     }
     Ok(())
 }
 
-fn prompt_unlock_if_locked(protected_dir: &str) -> Result<()> {
+fn prompt_unlock_if_locked(protected_dir: &str, shred_files: bool) -> Result<()> {
     let mut ans = String::new();
     print!("Filesafe is locked. Would you like to unlock it now? [y/N]: ");
     let _ = io::stdout().flush();
     let _byt = io::stdin().read_line(&mut ans)?;
     let processed_ans = &ans.to_lowercase().trim().to_string();
     if processed_ans == "y" {
-        unlock_if_locked(0)?;
-        filesafe::restore_files(protected_dir)?;
+        unlock_if_locked(0, shred_files)?;
+        filesafe::restore_files(protected_dir, shred_files)?;
     }
     Ok(())
 }
 
-fn unlock_if_locked(mut num_tries: usize) -> Result<()> {
+fn unlock_if_locked(mut num_tries: usize, shred_files: bool) -> Result<()> {
     ensure!(
         num_tries < filesafe::MAX_PASS_ATTEMPT,
         "Max attempts exceeded [unlock]"
@@ -396,7 +402,7 @@ fn unlock_if_locked(mut num_tries: usize) -> Result<()> {
     if is_valid_pass {
         filesafe::log_event("Valid password received", filesafe::LogLevel::Info);
         filesafe::log_event("Unlocking filesafe", filesafe::LogLevel::Info);
-        match crypto::unlock(&pw) {
+        match crypto::unlock(&pw, shred_files) {
             Ok(_) => {
                 pw.zeroize();
                 return Ok(());
@@ -409,10 +415,10 @@ fn unlock_if_locked(mut num_tries: usize) -> Result<()> {
     }
     filesafe::log_event("Invalid password recieved", filesafe::LogLevel::Info);
     num_tries += 1;
-    unlock_if_locked(num_tries)
+    unlock_if_locked(num_tries, shred_files)
 }
 
-fn lock_if_unlocked(mut num_tries: usize, protected_dir: &str) -> Result<()> {
+fn lock_if_unlocked(mut num_tries: usize, protected_dir: &str, shred_files: bool) -> Result<()> {
     ensure!(
         num_tries < filesafe::MAX_PASS_ATTEMPT,
         "Max attempts exceeded [lock]"
@@ -422,7 +428,7 @@ fn lock_if_unlocked(mut num_tries: usize, protected_dir: &str) -> Result<()> {
     if is_valid_pass {
         filesafe::log_event("Valid password received", filesafe::LogLevel::Info);
         filesafe::log_event("Locking filesafe", filesafe::LogLevel::Info);
-        match crypto::lock(&pw, protected_dir) {
+        match crypto::lock(&pw, protected_dir, shred_files) {
             Ok(_) => {
                 pw.zeroize();
                 return Ok(());
@@ -435,7 +441,7 @@ fn lock_if_unlocked(mut num_tries: usize, protected_dir: &str) -> Result<()> {
     }
     filesafe::log_event("Invalid password recieved", filesafe::LogLevel::Info);
     num_tries += 1;
-    lock_if_unlocked(num_tries, protected_dir)
+    lock_if_unlocked(num_tries, protected_dir, shred_files)
 }
 
 fn get_filesafe_dir() -> Result<String> {
@@ -545,6 +551,13 @@ fn get_server_params_from_file(
         Some(s) => server_params.sec_backup_dir = Some(s.to_string()),
         None => (),
     };
+    match section.get("shred") {
+        Some(s) => match s.to_lowercase().as_str() {
+            "y" => server_params.shred_file = true,
+            _ => (),
+        },
+        None => (),
+    }
     Ok(server_params)
 }
 
@@ -577,6 +590,7 @@ fn get_server_params(
             day: filesafe::AutoBackupDay::Invalid,
         },
         sec_backup_dir: None,
+        shred_file: false,
     };
     server_params = get_server_params_from_file(conf_file, server_params.clone())?;
     set_current_dir(&safe_dir)?;
@@ -715,6 +729,9 @@ fn get_server_params(
         }
         None => (),
     };
+    if matches.get_flag("shred") {
+        server_params.shred_file = true;
+    }
     Ok(server_params)
 }
 
@@ -784,14 +801,18 @@ fn get_readable_size(num_bytes: u64) -> String {
     format!("{:.1}G", num_bytes as f64 / 1000000000.0)
 }
 
-fn filesafe_setup(protected_dir: &str, secondary_backup: &Option<String>) -> Result<()> {
+fn filesafe_setup(
+    protected_dir: &str,
+    secondary_backup: &Option<String>,
+    shred_files: bool,
+) -> Result<()> {
     let create_new = should_create_new(0)?;
     let is_unlocked = filesafe::is_unlocked(protected_dir)?;
     if create_new {
         filesafe::log_event("Creating new filesafe", filesafe::LogLevel::Info);
         if is_unlocked {
             println!("Filesafe MUST be locked to save backup. Enter password to lock filesafe.");
-            lock_if_unlocked(0, protected_dir)?;
+            lock_if_unlocked(0, protected_dir, shred_files)?;
         }
         let is_locked = filesafe::is_locked()?;
         if is_locked {

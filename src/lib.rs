@@ -15,13 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{bail, ensure, Result};
 use chrono::{Local, NaiveDateTime};
 use fs_extra::dir::{self, get_dir_content2, CopyOptions, DirOptions};
 use sha2::{Digest, Sha256};
 use std::fs::{self, create_dir_all, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
+use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use threadpool::ThreadPool;
 
@@ -33,6 +34,7 @@ pub struct ServerParams {
     pub protected_dir: String,
     pub auto_bu_params: AutoBackup,
     pub sec_backup_dir: Option<String>,
+    pub shred_file: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -172,7 +174,7 @@ pub fn create_backup(secondary_backup: &Option<String>) -> Result<String> {
     Ok(backup_dir)
 }
 
-pub fn restore_files(protected_dir: &str) -> Result<()> {
+pub fn restore_files(protected_dir: &str, shred_file: bool) -> Result<()> {
     let mut options = CopyOptions::new();
     options.skip_exist = true;
     options.copy_inside = true;
@@ -190,13 +192,54 @@ pub fn restore_files(protected_dir: &str) -> Result<()> {
         from_paths.push(f);
     }
     fs_extra::move_items(&from_paths, protected_dir, &options)?;
-    // shred_dir(FILESAFE_DECOMPRESS_TEMP)?;
-    fs::remove_dir_all(FILESAFE_DECOMPRESS_TEMP)?;
+    delete(FILESAFE_DECOMPRESS_TEMP, shred_file)?;
     log_event("Files restored", LogLevel::Info);
     Ok(())
 }
 
-pub fn shred_dir(directory: &str) -> Result<()> {
+pub fn delete(file: &str, shred_file: bool) -> Result<()> {
+    ensure!(
+        Path::new(file).exists(),
+        "Attempt to delete file that does not exist"
+    );
+    let event = format!("Begin delete of {}", file);
+    log_event(&event, LogLevel::Performance);
+    let metad = fs::metadata(file)?;
+    if metad.is_dir() {
+        if shred_file {
+            shred_dir(file)?;
+        } else {
+            remove_child_paths(file)?;
+        }
+    } else {
+        if shred_file {
+            shred(file)?;
+        } else {
+            fs::remove_file(file)?;
+        }
+    }
+    let event = format!("End delete of {}", file);
+    log_event(&event, LogLevel::Performance);
+    Ok(())
+}
+
+fn shred(file: &str) -> Result<()> {
+    ensure!(
+        Path::new(file).exists(),
+        "Attempt to shred file that does not exist"
+    );
+    let event = format!("Begin shred of {}", file);
+    log_event(&event, LogLevel::Performance);
+    let status = Command::new("shred").arg("-u").arg(file).status()?;
+    if status.success() {
+        let event = format!("Completed shred of {}", file);
+        log_event(&event, LogLevel::Performance);
+        return Ok(());
+    }
+    bail!("File shred failed")
+}
+
+fn shred_dir(directory: &str) -> Result<()> {
     let event = format!("Begin shred of {} directory", directory);
     log_event(&event, LogLevel::Performance);
     let pool = ThreadPool::new(num_cpus::get());
@@ -206,13 +249,9 @@ pub fn shred_dir(directory: &str) -> Result<()> {
         if !Path::new(&file).exists() {
             continue;
         }
-        // println!("{}", file);
         let tx = tx.clone();
         pool.execute(move || {
-            let res = match nozomi::erase_file(&file, nozomi::EraserEntity::PseudoRandom) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(anyhow!("Error erasing file {} [{}]", file, e)),
-            };
+            let res = shred(&file);
             tx.send(res).expect("Unable to send to tx {file}");
         });
     }
@@ -225,18 +264,13 @@ pub fn shred_dir(directory: &str) -> Result<()> {
     }
     let event = format!("Complete shred of FILES in {} directory", directory);
     log_event(&event, LogLevel::Debug);
-    match nozomi::erase_folder(directory, nozomi::EraserEntity::PseudoRandom, true) {
-        Ok(_) => (),
-        Err(e) => {
-            bail!("{}", e);
-        }
-    };
+    remove_child_paths(directory)?;
     let event = format!("End shred of {} directory", directory);
     log_event(&event, LogLevel::Performance);
     Ok(())
 }
 
-pub fn remove_child_paths(directory: &str) -> Result<()> {
+fn remove_child_paths(directory: &str) -> Result<()> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         if entry.metadata()?.is_dir() {

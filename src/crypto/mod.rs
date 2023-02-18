@@ -78,12 +78,12 @@ pub fn gen_keys() -> Result<Keys> {
     })
 }
 
-pub fn lock(password: &str, protected_dir: &str) -> Result<()> {
+pub fn lock(password: &str, protected_dir: &str, shred_files: bool) -> Result<()> {
     let is_valid = verify_password(password)?;
     ensure!(is_valid, "Lock attempt with INVALID password");
     compress(protected_dir)?;
     // filesafe::shred_dir(protected_dir)?;
-    filesafe::remove_child_paths(protected_dir)?;
+    filesafe::delete(protected_dir, shred_files)?;
     split_file()?;
     // filesafe::log_event("Begin shred of TAR file", filesafe::LogLevel::Performance);
     // match nozomi::erase_file(filesafe::FILESAFE_TAR, nozomi::EraserEntity::PseudoRandom) {
@@ -93,16 +93,16 @@ pub fn lock(password: &str, protected_dir: &str) -> Result<()> {
     //     }
     // };
     // filesafe::log_event("End shred of TAR file", filesafe::LogLevel::Performance);
-    fs::remove_file(filesafe::FILESAFE_TAR)?;
+    filesafe::delete(filesafe::FILESAFE_TAR, shred_files)?;
     encrypt_files(password)?;
-    // filesafe::shred_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
-    fs::remove_dir_all(filesafe::FILESAFE_COMPRESSED_DIR)?;
-    fs::create_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    filesafe::delete(filesafe::FILESAFE_COMPRESSED_DIR, shred_files)?;
+    // fs::remove_dir_all(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    // fs::create_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
     filesafe::log_event("Filesafe LOCKED", filesafe::LogLevel::Info);
     Ok(())
 }
 
-pub fn unlock(password: &str) -> Result<()> {
+pub fn unlock(password: &str, shred_files: bool) -> Result<()> {
     let is_valid = verify_password(password)?;
     ensure!(is_valid, "Unlock attempt with INVALID password");
     filesafe::log_event("Filesafe UNLOCK initiated", filesafe::LogLevel::Performance);
@@ -110,10 +110,12 @@ pub fn unlock(password: &str) -> Result<()> {
     assemble_files()?;
     decompress()?;
     // filesafe::shred_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
-    fs::remove_dir_all(filesafe::FILESAFE_COMPRESSED_DIR)?;
-    fs::create_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
-    fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
-    fs::create_dir(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+    filesafe::delete(filesafe::FILESAFE_COMPRESSED_DIR, shred_files)?;
+    // fs::remove_dir_all(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    // fs::create_dir(filesafe::FILESAFE_COMPRESSED_DIR)?;
+    filesafe::delete(filesafe::FILESAFE_ENCRYPTED_DIR, shred_files)?;
+    // fs::remove_dir_all(filesafe::FILESAFE_ENCRYPTED_DIR)?;
+    // fs::create_dir(filesafe::FILESAFE_ENCRYPTED_DIR)?;
     filesafe::log_event("Filesafe UNLOCKED", filesafe::LogLevel::Info);
     Ok(())
 }

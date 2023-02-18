@@ -75,8 +75,11 @@ fn main() {
     let in_action = Arc::new(Mutex::new(false));
     if matches.get_flag("setup") {
         filesafe::log_event("Begin setup", filesafe::LogLevel::Info);
-        match init::setup_interractive(&server_params.protected_dir, &server_params.sec_backup_dir)
-        {
+        match init::setup_interractive(
+            &server_params.protected_dir,
+            &server_params.sec_backup_dir,
+            server_params.shred_file,
+        ) {
             Ok(_) => (),
             Err(e) => {
                 let err_str = format!("[Error] main::init::setup_interractive {}", e);
@@ -90,6 +93,7 @@ fn main() {
             server_params.timeout,
             matches.clone(),
             in_action_clone,
+            server_params.shred_file.clone(),
         ) {
             Ok(_) => (),
             Err(e) => {
@@ -99,7 +103,11 @@ fn main() {
             }
         };
     } else {
-        match init::setup_non_interractive(&server_params.protected_dir, matches.clone()) {
+        match init::setup_non_interractive(
+            &server_params.protected_dir,
+            matches.clone(),
+            server_params.shred_file,
+        ) {
             Ok(_) => (),
             Err(e) => {
                 let err_str = format!("[Error] main::init::setup_non_interractive {}", e);
@@ -113,6 +121,7 @@ fn main() {
             server_params.timeout,
             matches.clone(),
             in_action_clone,
+            server_params.shred_file.clone(),
         ) {
             Ok(_) => (),
             Err(e) => {
@@ -147,10 +156,17 @@ fn main() {
                 let keys_clone = server_keys.clone();
                 let protected_dir_clone = server_params.protected_dir.clone();
                 let in_action_clone = Arc::clone(&in_action);
+                let shred_files = server_params.shred_file.clone();
                 let event = format!("New Connection from {}", stream.peer_addr().unwrap());
                 filesafe::log_event(&event, filesafe::LogLevel::Info);
                 thread::spawn(move || {
-                    handle_connection(stream, keys_clone, protected_dir_clone, in_action_clone)
+                    handle_connection(
+                        stream,
+                        keys_clone,
+                        protected_dir_clone,
+                        in_action_clone,
+                        shred_files,
+                    )
                 });
             }
             Err(e) => {
@@ -167,6 +183,7 @@ fn handle_connection(
     my_keys: crypto::Keys,
     protected_dir: String,
     in_action: Arc<Mutex<bool>>,
+    shred_files: bool,
 ) {
     // NOTE: step 1
     match send_msg(&my_keys.pk_export, &stream) {
@@ -428,7 +445,7 @@ fn handle_connection(
                 return;
             }
         };
-        match lock_with_stream(&protected_dir, &dec_pass, &stream, in_action) {
+        match lock_with_stream(&protected_dir, &dec_pass, &stream, in_action, shred_files) {
             Ok(_) => (),
             Err(e) => {
                 let err_str = format!(
@@ -474,7 +491,7 @@ fn handle_connection(
                 return;
             }
         };
-        match unlock_with_stream(&dec_pass, &stream, &protected_dir, in_action) {
+        match unlock_with_stream(&dec_pass, &stream, &protected_dir, in_action, shred_files) {
             Ok(_) => (),
             Err(e) => {
                 let err_str = format!(
@@ -537,6 +554,7 @@ fn unlock_with_stream(
     stream: &TcpStream,
     protected_dir: &str,
     in_action: Arc<Mutex<bool>>,
+    shred_files: bool,
 ) -> Result<()> {
     let is_valid_pass = crypto::verify_password(&password)?;
     ensure!(is_valid_pass, "Invalid password received");
@@ -565,8 +583,8 @@ fn unlock_with_stream(
         stream.peer_addr().unwrap(),
     );
     filesafe::log_event(&event, filesafe::LogLevel::Info);
-    match crypto::unlock(&password) {
-        Ok(_) => match filesafe::restore_files(&protected_dir) {
+    match crypto::unlock(&password, shred_files) {
+        Ok(_) => match filesafe::restore_files(&protected_dir, shred_files) {
             Ok(_) => {
                 let mut action = match in_action.lock() {
                     Ok(b) => b,
@@ -616,6 +634,7 @@ fn lock_with_stream(
     password: &str,
     stream: &TcpStream,
     in_action: Arc<Mutex<bool>>,
+    shred_files: bool,
 ) -> Result<()> {
     let event = format!("Begin lock from {} ", stream.peer_addr().unwrap());
     filesafe::log_event(&event, filesafe::LogLevel::Debug);
@@ -648,7 +667,7 @@ fn lock_with_stream(
         stream.peer_addr().unwrap(),
     );
     filesafe::log_event(&event, filesafe::LogLevel::Info);
-    match crypto::lock(&password, protected_dir) {
+    match crypto::lock(&password, protected_dir, shred_files) {
         Ok(_) => {
             let mut action = match in_action.lock() {
                 Ok(b) => b,
@@ -814,6 +833,14 @@ fn get_matches() -> ArgMatches {
                 .action(clap::ArgAction::Set)
                 .num_args(1),
         )
+        .arg(
+            Arg::new("shred")
+                .short('S')
+                .long("shred")
+                .help("No args. If flag is given, files will be shred rather than removed.")
+                .required(false)
+                .action(clap::ArgAction::SetTrue)
+        )
         .get_matches()
 }
 
@@ -823,6 +850,7 @@ fn watch(
     timeout: usize,
     lock_now: bool,
     in_action: Arc<Mutex<bool>>,
+    shred_files: bool,
 ) {
     let pw = SecStr::from(password);
     if !lock_now {
@@ -871,7 +899,11 @@ fn watch(
                     *action = true;
                 }
                 filesafe::log_event("Locking filesafe due to timeout", filesafe::LogLevel::Info);
-                match crypto::lock(from_utf8(pw.unsecure()).unwrap(), &protected_dir) {
+                match crypto::lock(
+                    from_utf8(pw.unsecure()).unwrap(),
+                    &protected_dir,
+                    shred_files,
+                ) {
                     Ok(_) => (),
                     Err(e) => {
                         let err_str = format!("[Error] watch::lock {}", e);
@@ -901,6 +933,7 @@ fn watch_setup_non_interractive(
     timeout: usize,
     matches: ArgMatches,
     in_action: Arc<Mutex<bool>>,
+    shred_files: bool,
 ) -> Result<()> {
     if matches.get_flag("no timeout") {
         filesafe::log_event("Timeout disabled by user", filesafe::LogLevel::Info);
@@ -917,11 +950,29 @@ fn watch_setup_non_interractive(
             let is_valid_pass = crypto::verify_password(&pass)?;
             ensure!(is_valid_pass, "Invalid password passed via args");
             filesafe::log_event("Valid password received", filesafe::LogLevel::Info);
-            thread::spawn(move || watch(protected_dir_clone, pass, timeout_clone, true, in_action));
+            thread::spawn(move || {
+                watch(
+                    protected_dir_clone,
+                    pass,
+                    timeout_clone,
+                    true,
+                    in_action,
+                    shred_files,
+                )
+            });
         }
         None => {
             let pass = get_pass(0)?;
-            thread::spawn(move || watch(protected_dir_clone, pass, timeout_clone, true, in_action));
+            thread::spawn(move || {
+                watch(
+                    protected_dir_clone,
+                    pass,
+                    timeout_clone,
+                    true,
+                    in_action,
+                    shred_files,
+                )
+            });
         }
     };
     filesafe::log_event("Timeout enabled", filesafe::LogLevel::Info);
@@ -933,6 +984,7 @@ fn watch_setup_interractive(
     timeout: usize,
     matches: ArgMatches,
     in_action: Arc<Mutex<bool>>,
+    shred_files: bool,
 ) -> Result<()> {
     if matches.get_flag("no timeout") {
         filesafe::log_event("Timeout disabled by user", filesafe::LogLevel::Info);
@@ -963,6 +1015,7 @@ fn watch_setup_interractive(
                     timeout_clone,
                     allow_lock,
                     in_action,
+                    shred_files,
                 )
             });
         }
@@ -975,6 +1028,7 @@ fn watch_setup_interractive(
                     timeout_clone,
                     allow_lock,
                     in_action,
+                    shred_files,
                 )
             });
         }
