@@ -19,7 +19,7 @@
   - [[#backup][Backup]]
   - [[#memory-encryption][Memory Encryption]]
   - [[#secure-erase-shred--u][Secure Erase (shred -u)]]
-- [[#project-tracking-68][Project Tracking]]
+- [[#project-tracking-03][Project Tracking]]
 - [[#donate][Donate]]
 - [[#client][Client]]
 - [[#license][License]]
@@ -82,7 +82,7 @@ Implementation Used: crate flate2 -> GzEncoder
 Files are encrypted with the Chacha20-Poly1305 cipher (AEAD) with PBKDF-SHA256:100000 iterations KDF. The crate *cocoon* is used as a wrapper for *chacha20poly1305*. This cipher and implementation was chosen for its strong encryption, adoption in TLS, and external security audit by NCC Group (https://research.nccgroup.com/2020/02/26/public-report-rustcrypto-aes-gcm-and-chacha20poly1305-implementation-review/).
 Implementation Used: crate cocoon
 ** Public-Key Encryption
-Public-key encryption (RSA) is used for authentication from client to server. The only message encrypted is the password sent by the client. All other messages are status/request codes.
+Public-key encryption (RSA) is used for authentication from client to server. The only message encrypted is the password sent by the client. To prevent replay attacks, the password is encrypted with a server supplied nonce to prevent replay attacks. All other messages are status/request codes.
 Implementation Used: crate rsa
 ** Timeout
 Timeout is a feature that will automatically lock the filesafe if no files have been modified in the directory (or sub-directories) within the specified time frame. This feature can be disabled via arguments (not recommended).
@@ -98,21 +98,14 @@ The directories that are shredded include:
  * ~/.config/filesafe/.compressed
  * ~/.config/filesafe/.tmp
 
-* TODO Project Tracking [6/8]
+* TODO Project Tracking [0/3]
 + [ ] Analyze memory for encrypted data leaks. [0/4]
   - [ ] Timeout thread
   - [ ] Client authentication (Server's SK)
   - [ ] Normal at rest
   - [ ] Inspect disk following secure erase ([[Secure Erase]])
-+ [X] Implement shred like feature
++ [ ] Analyze protocol for cryptographic vulnerabilities
 + [-] Documentation
-+ [X] Make secure erase multithread
-+ [X] Test on remote machine with nfs share from that remote server
-+ [X] Wrap (Encrypt) server private key in memory so it cannot be extracted
-+ [X] Automatic Backups
-+ [X] Create setup scripts [2/2]
-  - [X] Server
-  - [X] Client
 
 * Donate
 - XMR: 84t9GUWQVJSGxF8cbMtRBd67YDAHnTsrdWVStcdpiwcAcAnVy21U6RmLdwiQdbfsyu16UqZn6qj1gGheTMkHkYA4HbVN4zS

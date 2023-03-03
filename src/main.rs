@@ -19,6 +19,8 @@ use anyhow::{bail, ensure, Result};
 use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use clap::{Arg, ArgMatches, Command};
 use core::time;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use secstr::SecStr;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
@@ -153,12 +155,12 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let event = format!("New Connection from {}", stream.peer_addr().unwrap());
+                filesafe::log_event(&event, filesafe::LogLevel::Info);
                 let keys_clone = server_keys.clone();
                 let protected_dir_clone = server_params.protected_dir.clone();
                 let in_action_clone = Arc::clone(&in_action);
                 let shred_files = server_params.shred_file.clone();
-                let event = format!("New Connection from {}", stream.peer_addr().unwrap());
-                filesafe::log_event(&event, filesafe::LogLevel::Info);
                 thread::spawn(move || {
                     handle_connection(
                         stream,
@@ -185,8 +187,15 @@ fn handle_connection(
     in_action: Arc<Mutex<bool>>,
     shred_files: bool,
 ) {
-    // NOTE: step 1
-    match send_msg(&my_keys.pk_export, &stream) {
+    // Generate nonce
+    let nonce_string: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
+    // Send nonce + key
+    let nonce_key = format!("{}{}", nonce_string, &my_keys.pk_export);
+    match send_msg(&nonce_key, &stream) {
         Ok(_) => (),
         Err(e) => {
             let err_str = format!(
@@ -204,7 +213,7 @@ fn handle_connection(
         stream.peer_addr().unwrap()
     );
     filesafe::log_event(&event, filesafe::LogLevel::Info);
-    // NOTE step 2
+    // Did client receive nonce & key
     let msg = match recv_msg(&stream) {
         Ok(s) => s,
         Err(e) => {
@@ -227,8 +236,8 @@ fn handle_connection(
         drop(stream);
         return;
     }
-    // NOTE: step 3
-    let mut client_pass = match recv_msg(&stream) {
+    // Get nonce & password from client [ENCRYPTED]
+    let mut client_response = match recv_msg(&stream) {
         Ok(s) => s,
         Err(e) => {
             let err_str = format!(
@@ -241,24 +250,42 @@ fn handle_connection(
             return;
         }
     };
-    let auth: bool;
+    // decrypt password
+    let mut dec_response = match crypto::decrypt_msg(&client_response, my_keys.clone()) {
+        Ok(s) => s,
+        Err(e) => {
+            let err_str = format!(
+                "[Error] handle::decrypt_msg with {}: {}",
+                stream.peer_addr().unwrap(),
+                e
+            );
+            filesafe::log_event(&err_str, filesafe::LogLevel::Error);
+            client_response.zeroize();
+            drop(stream);
+            return;
+        }
+    };
+    client_response.zeroize();
+    // is response too small
+    if dec_response.len() < 9 {
+        let err_str = format!(
+            "[Error] handle::response length < 9 from {}",
+            stream.peer_addr().unwrap()
+        );
+        filesafe::log_event(&err_str, filesafe::LogLevel::Error);
+        dec_response.zeroize();
+        drop(stream);
+        return;
+    }
+    // place response in secure string and zeroize decrypted response
+    let secure_np = SecStr::from(dec_response);
+    // Verify password and nonce
+    let pass_auth: bool;
     {
-        // minimize time decrypted password is in memory
-        let mut dec_pass = match crypto::decrypt_msg(&client_pass, my_keys.clone()) {
-            Ok(s) => s,
-            Err(e) => {
-                let err_str = format!(
-                    "[Error] handle::decrypt_msg with {}: {}",
-                    stream.peer_addr().unwrap(),
-                    e
-                );
-                filesafe::log_event(&err_str, filesafe::LogLevel::Error);
-                client_pass.zeroize();
-                drop(stream);
-                return;
-            }
-        };
-        auth = match crypto::verify_password(&dec_pass) {
+        let unsecure_np = from_utf8(secure_np.unsecure()).unwrap();
+        let client_nonce = &unsecure_np[..8];
+        let client_pass = &mut unsecure_np[8..].to_string();
+        pass_auth = match crypto::verify_password(client_pass) {
             Ok(b) => b,
             Err(e) => {
                 let err_str = format!(
@@ -268,15 +295,32 @@ fn handle_connection(
                 );
                 filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                 client_pass.zeroize();
-                dec_pass.zeroize();
                 drop(stream);
                 return;
             }
         };
-        dec_pass.zeroize();
+        client_pass.zeroize();
+        if nonce_string.ne(&client_nonce) {
+            let event = format!("Bad nonce from {}", stream.peer_addr().unwrap());
+            filesafe::log_event(&event, filesafe::LogLevel::Info);
+            match send_msg(STATUS_AUTH_BAD, &stream) {
+                Ok(_) => (),
+                Err(e) => {
+                    let err_str = format!(
+                        "[Error] handle::send_msg:AUTH_BAD with {}: {}",
+                        stream.peer_addr().unwrap(),
+                        e
+                    );
+                    filesafe::log_event(&err_str, filesafe::LogLevel::Error);
+                    drop(stream);
+                    return;
+                }
+            };
+            drop(stream);
+            return;
+        }
     }
-    // NOTE: step 4
-    if !auth {
+    if !pass_auth {
         let event = format!("Bad password from {}", stream.peer_addr().unwrap());
         filesafe::log_event(&event, filesafe::LogLevel::Info);
         match send_msg(STATUS_AUTH_BAD, &stream) {
@@ -289,11 +333,9 @@ fn handle_connection(
                 );
                 filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                 drop(stream);
-                client_pass.zeroize();
                 return;
             }
         };
-        client_pass.zeroize();
         drop(stream);
         return;
     }
@@ -323,7 +365,6 @@ fn handle_connection(
                 }
             };
             drop(stream);
-            client_pass.zeroize();
             return;
         }
     };
@@ -348,7 +389,6 @@ fn handle_connection(
                 }
             };
             drop(stream);
-            client_pass.zeroize();
             return;
         }
     };
@@ -363,7 +403,6 @@ fn handle_connection(
                 );
                 filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                 drop(stream);
-                client_pass.zeroize();
                 return;
             }
         };
@@ -378,7 +417,6 @@ fn handle_connection(
                 );
                 filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                 drop(stream);
-                client_pass.zeroize();
                 return;
             }
         };
@@ -393,13 +431,11 @@ fn handle_connection(
                 );
                 filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                 drop(stream);
-                client_pass.zeroize();
                 return;
             }
         };
         filesafe::log_event("Filesafe is empty", filesafe::LogLevel::Info);
         drop(stream);
-        client_pass.zeroize();
         return;
     }
     let client_action = match recv_msg(&stream) {
@@ -412,7 +448,6 @@ fn handle_connection(
             );
             filesafe::log_event(&err_str, filesafe::LogLevel::Error);
             drop(stream);
-            client_pass.zeroize();
             return;
         }
     };
@@ -420,32 +455,24 @@ fn handle_connection(
         let event = format!("client [{}] exit", stream.peer_addr().unwrap());
         filesafe::log_event(&event, filesafe::LogLevel::Info);
         drop(stream);
-        client_pass.zeroize();
         return;
     }
     if client_action != REQUEST_LOCK && client_action != REQUEST_UNLOCK {
         let event = format!("Invalid action from {}", stream.peer_addr().unwrap());
         filesafe::log_event(&event, filesafe::LogLevel::Info);
         drop(stream);
-        client_pass.zeroize();
         return;
     }
     if client_action == REQUEST_LOCK && !is_locked {
-        let mut dec_pass = match crypto::decrypt_msg(&client_pass, my_keys.clone()) {
-            Ok(s) => s,
-            Err(e) => {
-                let err_str = format!(
-                    "[Error] handle::decrypt_msg:req_lock with {}: {}",
-                    stream.peer_addr().unwrap(),
-                    e
-                );
-                filesafe::log_event(&err_str, filesafe::LogLevel::Error);
-                drop(stream);
-                client_pass.zeroize();
-                return;
-            }
-        };
-        match lock_with_stream(&protected_dir, &dec_pass, &stream, in_action, shred_files) {
+        let unsecure_np = from_utf8(secure_np.unsecure()).unwrap();
+        let client_pass = &mut unsecure_np[8..].to_string();
+        match lock_with_stream(
+            &protected_dir,
+            &client_pass,
+            &stream,
+            in_action,
+            shred_files,
+        ) {
             Ok(_) => (),
             Err(e) => {
                 let err_str = format!(
@@ -464,34 +491,26 @@ fn handle_connection(
                         );
                         filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                         drop(stream);
-                        dec_pass.zeroize();
                         client_pass.zeroize();
                         return;
                     }
                 };
-                dec_pass.zeroize();
                 client_pass.zeroize();
                 drop(stream);
                 return;
             }
         };
-        dec_pass.zeroize();
+        client_pass.zeroize();
     } else if client_action == REQUEST_UNLOCK && is_locked {
-        let mut dec_pass = match crypto::decrypt_msg(&client_pass, my_keys.clone()) {
-            Ok(s) => s,
-            Err(e) => {
-                let err_str = format!(
-                    "[Error] handle::decrypt_msg:req_unlock with {}: {}",
-                    stream.peer_addr().unwrap(),
-                    e
-                );
-                filesafe::log_event(&err_str, filesafe::LogLevel::Error);
-                drop(stream);
-                client_pass.zeroize();
-                return;
-            }
-        };
-        match unlock_with_stream(&dec_pass, &stream, &protected_dir, in_action, shred_files) {
+        let unsecure_np = from_utf8(secure_np.unsecure()).unwrap();
+        let client_pass = &mut unsecure_np[8..].to_string();
+        match unlock_with_stream(
+            &client_pass,
+            &stream,
+            &protected_dir,
+            in_action,
+            shred_files,
+        ) {
             Ok(_) => (),
             Err(e) => {
                 let err_str = format!(
@@ -510,18 +529,16 @@ fn handle_connection(
                         );
                         filesafe::log_event(&err_str, filesafe::LogLevel::Error);
                         drop(stream);
-                        dec_pass.zeroize();
                         client_pass.zeroize();
                         return;
                     }
                 };
                 drop(stream);
-                dec_pass.zeroize();
                 client_pass.zeroize();
                 return;
             }
         };
-        dec_pass.zeroize();
+        client_pass.zeroize();
     } else {
         let event = format!(
             "Client [{}] requested action for current filesafe state",
@@ -529,10 +546,8 @@ fn handle_connection(
         );
         filesafe::log_event(&event, filesafe::LogLevel::Info);
         drop(stream);
-        client_pass.zeroize();
         return;
     }
-    client_pass.zeroize();
     drop(stream);
 }
 
