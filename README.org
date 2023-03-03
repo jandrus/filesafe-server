@@ -20,6 +20,7 @@
   - [[#memory-encryption][Memory Encryption]]
   - [[#secure-erase-shred--u][Secure Erase (shred -u)]]
 - [[#project-tracking-03][Project Tracking]]
+- [[#contributors][Contributors]]
 - [[#donate][Donate]]
 - [[#client][Client]]
 - [[#license][License]]
@@ -106,6 +107,9 @@ The directories that are shredded include:
   - [ ] Inspect disk following secure erase ([[Secure Erase]])
 + [ ] Analyze protocol for cryptographic vulnerabilities
 + [-] Documentation
+
+* Contributors
++ Michael Gerba (mgerba12@gmail.com)
 
 * Donate
 - XMR: 84t9GUWQVJSGxF8cbMtRBd67YDAHnTsrdWVStcdpiwcAcAnVy21U6RmLdwiQdbfsyu16UqZn6qj1gGheTMkHkYA4HbVN4zS
