@@ -8,6 +8,7 @@
 - [[#suggested-use][Suggested Use]]
   - [[#suggested-network-diagram][Suggested network diagram]]
   - [[#alternate-network-diagram][Alternate network diagram]]
+  - [[#non-networked-diagram][Non-Networked diagram]]
 - [[#filesdirectories][Files/Directories]]
 - [[#function-description][Function Description]]
   - [[#lock][Lock]]
@@ -26,23 +27,25 @@
 - [[#license][License]]
 
 * Quick Start
-1. (Optional) Setup nfs/smb share on host machine. This will greatly reduce network latency for file manipulation
-2. Build the program if necessary.
+1. (Optional) Setup nfs/smb share on host machine. This will greatly reduce network latency for file manipulation.
+2. Download project.
+   * $ git clone https://github.com/jandrus/filesafe-server.git
+3. Build the program.
    * $ cd filesafe-server
-   * $ cargo build     # This will create a binary file "filesafe-server" in "filesafe-server/target/debug/". Move file as necessary
-3. Run the setup utility
+   * $ cargo build -r
+     NOTE: This will create a binary file "filesafe-server" in "filesafe-server/target/release/". Move this binary as necessary.
+4. Run the setup utility
    * $ ./setup.py
-4. Edit the configuration file if necessary
+5. Edit the configuration file if necessary
    * $ vi ~/.config/filesafe/filesafe.ini
-5. Run the server with the setup flag. If binary was moved, execute from that location.
-   * $ cd target/debug
-   * ./filesafe-server -s
+6. Run the server with the setup flag. If binary was moved, execute from that location.
+   * ./target/release/filesafe-server -s
 
 * About
 Filesafe is designed to be a digital safe or vault for your data with an automatic locking feature (timeout) and automatic backup feature. Filesafe (your digital vault) can be locked and unlocked with a password from the client program. See [[Function Description]] for details on locking and locking process. Your vault is a directory, specified with /protected_dir/ in *filesafe.ini*. This directory can be a directory on a separate network share, local directory on the server shared with the network (recommended for multi-user), or local directory on the server that is not shared (recommended for single-user). With a properly setup filesafe-server, a client can securely authenticate (see [[Public-Key Encryption]]) to the server and lock/unlock the /protected_dir/.
 
 * Suggested Use
-Filesafe is best used when the server is hosting a share (nfs/smb) and the client is connected to the share and uses the client program ([[Client]]) to unlock/lock the filesafe as necessary ([[Suggested network diagram]]). Alternatively, a separate share host can be used ([[Alternate network diagram]]). This is not recommended due to increased network latency.
+Filesafe is best used when the server is hosting a share (nfs/smb) and the client is connected to the share and uses the client program ([[Client]]) to unlock/lock the filesafe as necessary ([[Suggested network diagram]]). Alternatively, a separate share host can be used ([[Alternate network diagram]]). This is not recommended due to increased network latency. Filesafe may also be used locally on one machine ().
 ** Suggested network diagram
 #+CAPTION: Suggested network layout
 #+ATTR_CENTER:
@@ -51,6 +54,10 @@ Filesafe is best used when the server is hosting a share (nfs/smb) and the clien
 #+CAPTION: Alternate network layout
 #+ATTR_CENTER:
 [[./diagrams/alt-network.txt]]
+** Non-Networked diagram
+#+CAPTION: Non-network layout
+#+ATTR_CENTER:
+[[./diagrams/non-networked.txt]]
 
 * Files/Directories
 Files used by *filesafe-server* are kept in "$HOME/.config/filesafe".
