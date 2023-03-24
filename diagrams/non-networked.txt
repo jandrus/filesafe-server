@@ -1,0 +1,15 @@
++-------------------+
+|    Server/Client  |
+|    192.168.1.2    |
+|                   |
+| ----------------- |
+|   filesafe:7878   | <-------+
+|                   |         |
+| ----------------- |         |
+|      Client       +---------+
+|                   |
++-------------------+
+
+Filesafe server is running on users machine.
+Client program is used to connect to users machine via port 7878.
+Note: Loopback (lo) is not a default interface. Use eth, enp, or wlp address.
