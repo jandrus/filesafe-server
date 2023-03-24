@@ -16,7 +16,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use anyhow::{bail, ensure, Result};
-use chrono::{Datelike, Local, NaiveDateTime, Timelike};
+use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{Arg, ArgMatches, Command};
 use core::time;
 use rand::distributions::Alphanumeric;
@@ -1125,8 +1125,8 @@ fn autobackup(backup_params: filesafe::AutoBackup, secondary_backup: &Option<Str
         _ => filesafe::log_event("Automatic backup enabled", filesafe::LogLevel::Info),
     };
     loop {
-        let now_ts = Local::now().timestamp() - 18000;
-        let now = NaiveDateTime::from_timestamp_opt(now_ts, 0).unwrap();
+        let now_ts = filesafe::get_timestamp();
+        let now = NaiveDateTime::from_timestamp_opt(now_ts as i64, 0).unwrap();
         let seconds = match backup_params.frequency {
             filesafe::AutoBackupFrequency::Daily => (backup_params.time as i64
                 - now.num_seconds_from_midnight() as i64)

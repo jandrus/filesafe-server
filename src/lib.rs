@@ -16,7 +16,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use anyhow::{bail, ensure, Result};
-use chrono::{Local, NaiveDateTime};
+use chrono::Utc;
 use fs_extra::dir::{self, get_dir_content2, CopyOptions, DirOptions};
 use sha2::{Digest, Sha256};
 use std::fs::{self, create_dir_all, File, OpenOptions};
@@ -24,6 +24,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
+// use std::time::{SystemTime, UNIX_EPOCH};
 use threadpool::ThreadPool;
 
 #[derive(Clone, Debug)]
@@ -102,8 +103,7 @@ pub fn is_locked() -> Result<bool> {
 }
 
 pub fn log_event(e: &str, level: LogLevel) {
-    let now_ts = Local::now().timestamp() - 18000;
-    let now = NaiveDateTime::from_timestamp_opt(now_ts, 0).unwrap();
+    let now = get_iso8601();
     let event_msg: String;
     match level {
         LogLevel::Info => {
@@ -138,7 +138,7 @@ pub fn create_backup(secondary_backup: &Option<String>) -> Result<String> {
     if !is_locked {
         bail!("Backup failed. Files not found for backup.");
     }
-    let now_ts = Local::now().timestamp() - 18000;
+    let now_ts = get_timestamp();
     let backup_dir = format!("{}/filesafe-{}", FILESAFE_BACKUP_DIR, now_ts);
     create_dir_all(&backup_dir)?;
     let backup_tar_name = format!("{}/filesafe.backup", backup_dir);
@@ -221,6 +221,16 @@ pub fn delete(file: &str, shred_file: bool) -> Result<()> {
     let event = format!("End delete of {}", file);
     log_event(&event, LogLevel::Performance);
     Ok(())
+}
+
+pub fn get_timestamp() -> i64 {
+    let now = Utc::now();
+    now.timestamp()
+}
+
+pub fn get_iso8601() -> String {
+    let now = Utc::now();
+    format!("{:?}", now)
 }
 
 fn shred(file: &str) -> Result<()> {
